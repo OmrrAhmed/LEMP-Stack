@@ -1,0 +1,138 @@
+- name: apt update
+  apt:
+    update_cache: yes
+  
+- name: install mariadb
+  apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - mariadb-server
+    - mariadb-client
+    - python3-mysqldb
+
+    #Starting and enable php
+- name: restart mariadb
+  systemd_service:
+    name: mariadb
+    state: started
+
+    #Get mariadb Status
+- name: Run Command mariadb Status
+  command: "systemctl status mariadb"
+  register: results
+
+
+- name: print mariadb status
+  debug:
+    var: results
+
+
+- name: Check if custom password is specified for root user
+  debug:
+    msg: >
+      WARNING DETECTED !!! the password for mysql root user is empty.
+      Please set a password with a variable mysql_root_password on defaults/main.yml
+      te secure the root user.
+  when: not mysql_root_password
+
+- name: Check if mysql root password was not set
+  shell: >
+    mysql -u root
+    -h localhost
+    -e "quit"
+  changed_when: false
+  ignore_errors: true
+  register: check_passwd_root
+
+- name: Check if unix_socket plugin is enabled
+  shell: >
+    mysql -u root
+    -h localhost
+    -e "SELECT plugin from mysql.user WHERE user = 'root'"
+  ignore_errors: true
+  register: check_unix_socket_plugin
+  changed_when: check_unix_socket_plugin.stdout is search('socket')
+  when: check_passwd_root.rc == 0
+
+
+- name: Set MariaDB root password for 127.0.0.1, localhost
+  mysql_user:
+    name: root
+    password: "{{ mysql_root_password }}"
+    host: "{{ item }}"
+    login_user: root
+    state: present
+  with_items:
+    - 127.0.0.1
+    - localhost
+  when: check_passwd_root.rc == 0
+
+
+
+- name: Remove test database
+  mysql_db:
+    login_user: "root"
+    login_password: "{{ mysql_root_password }}"
+    db: "test"
+    state: absent
+  register: remove_test_db
+  notify:
+    - Remove test database priviledges
+    - Flush Priviliges
+
+- name: create new user for database
+  mysql_user:
+    name: omar
+    password: 123456789
+    host: "{{ item }}"
+    login_user: root
+    login_password: 123456789
+    state: present
+    priv: '*.*:ALL'
+  with_items:
+    - localhost
+    - 172.31.42.108
+    - 172.31.39.37
+
+- name: create new database
+  mysql_db:
+    name: demo
+    login_user: omar
+    login_password: 123456789
+    state: present
+
+
+- name: query to grant all access for database demo
+  mysql_query:
+    login_user: root
+    login_password: 123456789
+    query: "{{ item }}"
+  with_items:
+    - GRANT ALL PRIVILEGES ON *.* TO omar@172.31.39.37 IDENTIFIED BY '123456789';
+    - GRANT ALL PRIVILEGES ON demo.* TO omar@172.31.39.37;
+    - GRANT ALL PRIVILEGES ON *.* TO omar@localhost IDENTIFIED BY '123456789';
+    - GRANT ALL PRIVILEGES ON demo.* TO omar@localhost
+    - GRANT ALL PRIVILEGES ON *.* TO omar@172.31.39.37 IDENTIFIED BY '123456789';
+    - GRANT ALL PRIVILEGES ON demo.* TO omar@172.31.39.37;
+    - FLUSH PRIVILEGES
+
+- name: query to create database fields
+  mysql_query:
+    login_db: demo
+    login_user: omar
+    login_password: 123456789
+    query: CREATE TABLE users (username VARCHAR(50),password VARCHAR(100),category VARCHAR(50));
+
+- name: change binding address
+  replace:
+    path: /etc/mysql/mariadb.conf.d/50-server.cnf
+    regexp: 'bind-address            = 127.0.0.1'
+    replace: 'bind-address            = 172.31.39.37'
+
+- name: restart nginx
+  service:
+    name: mariadb
+    state: restarted
+
+

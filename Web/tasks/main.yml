@@ -1,0 +1,182 @@
+    - name: apt update
+      apt:
+        update_cache: yes
+      
+      #install Nginx
+    - name: install Nginx
+      apt:
+        name: nginx
+        state: present
+    
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+
+      #Get Nginx Status
+    - name: Run Command Nginx Status
+      command: "systemctl status nginx"
+      register: results
+
+      #print output Nginx Status
+    - name: Print Reuslts
+      debug:
+        var: results
+    
+      #install PHP
+    - name: Install PHP
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - php8.1-fpm
+        - php8.1-mysql
+        - php8.1
+        - php-common
+        - php8.1-cli
+        - php8.1-common
+        - php8.1-readline
+        - php8.1-mbstring
+        - php8.1-opcache
+        - php8.1-xml
+        - php8.1-gd
+        - php8.1-curl
+
+
+      #Starting and enable php
+    - name: starting and enable php
+      systemd_service:
+        state: started
+        name: php8.1-fpm
+
+      #Get PHP Status
+    - name: Run Command php8.1-fpm Status
+      command: "systemctl status php8.1-fpm "
+      register: results
+
+      #print output Nginx Status
+    - name: Print Reuslts
+      debug:
+        var: results
+    - name: Create New Directory
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - /var/www/demo_website
+        - /var/www/demo_website/html
+
+    - name: Move template
+      template:
+        src: "{{ item }}"
+        dest: /var/www/demo_website/html
+      with_items:
+        - login.html
+        - login.php
+        - logout.php
+        - register.html
+        - register.php
+        - style.css
+        - welcome.php
+
+      # Change ownership and group permission
+    - name: Change file ownership, group and permissions
+      file:
+        path: "{{ item }}"
+        recurse: yes
+        owner: www-data
+        group: www-data
+        mode: '755'
+      with_items:
+        - /var/www/demo_website
+        - /var/www/demo_website/html
+
+      # Change ownership and group permission
+    - name: Change Permission For PHP files
+      file:
+        path: "{{ item }}"
+        owner: www-data
+        group: www-data
+        mode: '644'
+      with_items:
+        - /var/www/demo_website/html/login.html
+        - /var/www/demo_website/html/login.php
+        - /var/www/demo_website/html/logout.php
+        - /var/www/demo_website/html/register.html
+        - /var/www/demo_website/html/register.php
+        - /var/www/demo_website/html/style.css
+        - /var/www/demo_website/html/welcome.php
+
+      # Moving server block
+    - name: Moving server block configuration
+      template:
+        src: demo_website
+        dest: /etc/nginx/sites-available/demo_website
+
+      # Change ownership and group permission
+    - name: Change Permission For server block file
+      file:
+        path: /etc/nginx/sites-available/demo_website
+        owner: www-data
+        group: www-data
+        mode: '600'
+
+      # Create Link Between Site available and site enaled
+    - name: Create Link Between Site available and site enaled
+      file:
+        src: /etc/nginx/sites-available/demo_website
+        dest: /etc/nginx/sites-enabled/demo_website
+        mode: '600'
+        state: link
+
+    - name: Create Link Between Site available and site enaled
+      file:
+        path: /etc/nginx/sites-enabled/demo_website
+        owner: www-data
+        group: www-data
+        mode: '777'
+
+    - name: delete default file for apache
+      file:
+        path: /var/www/html/index.html
+        state: absent
+        
+
+      #Get Nginx Status
+    - name: Run Command Nginx test
+      command: "nginx -t"
+      register: results
+
+      #print output Nginx Status
+    - name: Print Reuslts
+      debug:
+        var: results
+
+      #Get Nginx Status
+    - name: Unlink Default link
+      command: "unlink /etc/nginx/sites-enabled/default"
+      notify: restart nginx
+     
+
+    - name: Remove dependencies that are no longer required and purge their configuration files
+      apt:
+        name: "{{ item }}"
+        autoremove: yes
+        purge: true
+      with_items:
+        - apache2
+        - apache2-utils
+      notify: restart nginx
+
+
+    #restart php
+    - name: restart php
+      service:
+        name: php8.1-fpm
+        state: restarted
+
+
+    
+
+    

@@ -1,0 +1,17 @@
+---
+- hosts: WebServer
+  remote_user: ubuntu
+  become: yes
+
+  
+  roles:
+    - Web
+
+- hosts: DBServer
+  remote_user: ubuntu
+  become: yes
+
+  
+  roles:
+    - DB
+
